@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 )
@@ -34,36 +35,77 @@ func getCustomers(w http.ResponseWriter, r *http.Request) {
 
 func getCustomer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	//to fetch the path variable
+	params := mux.Vars(r)
+
+	idparam, err := strconv.Atoi(params["id"])
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+	}
+
+	for _, v := range sampleDetails {
+		if int(v.Id) == idparam {
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(v)
+		}
+	}
 }
 
 func addCustomer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var newCustomerDetail []customers
+	var newCustomerDetail customers //slice to be defined if multiple customers to be added.
 	request_body, _ := ioutil.ReadAll(r.Body)
 
 	json.Unmarshal(request_body, &newCustomerDetail)
-	//sampleDetails = append(sampleDetails, newCustomerDetail)
+	sampleDetails = append(sampleDetails, newCustomerDetail)
+	//sampleDetails = append(sampleDetails, newCustomerDetail...) // to add multiple customers
 	json.NewEncoder(w).Encode(sampleDetails)
 }
 
 func updateCustomer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var updateCustomerDetail []customers
+	var latestDetail customers
 	request_body, _ := ioutil.ReadAll(r.Body)
+	json.Unmarshal(request_body, &latestDetail)
 
-	json.Unmarshal(request_body, &updateCustomerDetail)
+	params := mux.Vars(r)
+
+	idparams, err := strconv.Atoi(params["id"])
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+	}
+
+	for k, v := range sampleDetails {
+		if int(v.Id) == idparams {
+			sampleDetails = append(sampleDetails[:k], sampleDetails[k+1:]...)
+			sampleDetails = append(sampleDetails, latestDetail)
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(sampleDetails)
+		}
+	}
 }
 
 func deleteCustomer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var deleteCustomerDetail []customers
-	request_body, _ := ioutil.ReadAll(r.Body)
+	params := mux.Vars(r)
 
-	json.Unmarshal(request_body, &deleteCustomerDetail)
+	idparams, err := strconv.Atoi(params["id"])
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+	}
 
+	for k, v := range sampleDetails {
+		if int(v.Id) == idparams {
+			sampleDetails = append(sampleDetails[:k], sampleDetails[k+1:]...)
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "Customer deleted successfully",
+			})
+		}
+	}
 }
 
 func main() {
