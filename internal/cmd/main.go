@@ -83,6 +83,8 @@ func updateCustomer(w http.ResponseWriter, r *http.Request) {
 	request_body, _ := ioutil.ReadAll(r.Body)
 	json.Unmarshal(request_body, &latestDetail)
 
+	// json.NewDecoder(r.Body).Decode(&latestDetail) - alternate to decode the JSON request to Go data structure
+
 	params := mux.Vars(r)
 	idparams, _ := strconv.Atoi(params["id"])
 
