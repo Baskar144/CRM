@@ -21,6 +21,17 @@ type customers struct {
 
 var sampleDetails []customers
 
+func getId() uint {
+	var highestId uint = 0
+
+	for _, customer := range sampleDetails {
+		if customer.Id > uint(highestId) {
+			highestId = customer.Id
+		}
+	}
+	return highestId + 1
+}
+
 func about(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -37,18 +48,18 @@ func getCustomer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	//to fetch the path variable
 	params := mux.Vars(r)
-
-	idparam, err := strconv.Atoi(params["id"])
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-	}
+	idparam, _ := strconv.Atoi(params["id"])
 
 	for _, v := range sampleDetails {
 		if int(v.Id) == idparam {
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(v)
+			return
 		}
 	}
+
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte(`{"error": "ID not found"}`))
 }
 
 func addCustomer(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +69,8 @@ func addCustomer(w http.ResponseWriter, r *http.Request) {
 	request_body, _ := ioutil.ReadAll(r.Body)
 
 	json.Unmarshal(request_body, &newCustomerDetail)
+
+	newCustomerDetail.Id = getId()
 	sampleDetails = append(sampleDetails, newCustomerDetail)
 	//sampleDetails = append(sampleDetails, newCustomerDetail...) // to add multiple customers
 	json.NewEncoder(w).Encode(sampleDetails)
@@ -71,20 +84,22 @@ func updateCustomer(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(request_body, &latestDetail)
 
 	params := mux.Vars(r)
-
-	idparams, err := strconv.Atoi(params["id"])
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-	}
+	idparams, _ := strconv.Atoi(params["id"])
 
 	for k, v := range sampleDetails {
 		if int(v.Id) == idparams {
-			sampleDetails = append(sampleDetails[:k], sampleDetails[k+1:]...)
-			sampleDetails = append(sampleDetails, latestDetail)
+			v = latestDetail
+			sampleDetails[k] = v
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(sampleDetails)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "Customer updated successfully",
+			})
+			return
 		}
 	}
+
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte(`{"error": "ID not found"}`))
 }
 
 func deleteCustomer(w http.ResponseWriter, r *http.Request) {
@@ -92,10 +107,7 @@ func deleteCustomer(w http.ResponseWriter, r *http.Request) {
 
 	params := mux.Vars(r)
 
-	idparams, err := strconv.Atoi(params["id"])
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-	}
+	idparams, _ := strconv.Atoi(params["id"])
 
 	for k, v := range sampleDetails {
 		if int(v.Id) == idparams {
@@ -104,8 +116,12 @@ func deleteCustomer(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{
 				"message": "Customer deleted successfully",
 			})
+			return
 		}
 	}
+
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte(`{"error": "ID not found"}`))
 }
 
 func main() {
