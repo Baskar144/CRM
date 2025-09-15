@@ -3,95 +3,144 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-type customers struct {
-	Id        uint
-	Name      string
-	Role      string
-	Email     string
-	Phone     uint64
-	Contacted bool
+type Customer struct {
+	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	Email     string `json:"email"`
+	Phone     uint64 `json:"phone"`
+	Contacted bool   `json:"contacted"`
 }
 
-var sampleDetails []customers
+var db *gorm.DB
+var customersList []Customer
 
-func getId() uint {
-	var highestId uint = 0
+func initializeDatabase() {
+	dsn := "host=localhost user=postgres password=Test@123 dbname=customersdb port=5432 sslmode=disable"
 
-	for _, customer := range sampleDetails {
-		if customer.Id > uint(highestId) {
-			highestId = customer.Id
+	var err error
+	if db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{}); err != nil {
+		log.Fatalf("Failed to connect to the database: %v", err)
+	}
+
+	if err = db.AutoMigrate(&Customer{}); err != nil {
+		log.Fatalf("Failed to migrate the database schema: %v", err)
+	}
+
+	customersList = []Customer{
+		{Name: "Tom", Role: "Developer", Email: "tom1@gmail.com", Phone: 9876543210, Contacted: true},
+		{Name: "David", Role: "QA Engineer", Email: "david2@gmail.com", Phone: 9876543210, Contacted: false},
+		{Name: "Stuart", Role: "Project manager", Email: "stuart3@gmail.com", Phone: 9876543210, Contacted: true},
+	}
+
+	for i, customer := range customersList {
+		var exisingCustomer Customer
+		result := db.First(&exisingCustomer, i+1)
+		if result.RowsAffected == 0 {
+			db.Create(&customer)
 		}
 	}
-	return highestId + 1
+
+	fmt.Println("Database connection established, schema migrated, and initial data seeded!")
 }
 
 func about(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "invalid http method found", http.StatusMethodNotAllowed)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	http.ServeFile(w, r, "./../static/about.html")
 }
 
 func getCustomers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(sampleDetails)
-}
-
-func getCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	//to fetch the path variable
-	params := mux.Vars(r)
-	idparam, _ := strconv.Atoi(params["id"])
-
-	for _, v := range sampleDetails {
-		if int(v.Id) == idparam {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(v)
-			return
-		}
+	if r.Method != http.MethodGet {
+		http.Error(w, "invalid http method found", http.StatusMethodNotAllowed)
+		return
 	}
 
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte(`{"error": "ID not found"}`))
+	var customers []Customer
+	if err := db.Find(&customers).Error; err != nil {
+		http.Error(w, "Error fetching the records from the database", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(customers)
 }
 
-func addCustomer(w http.ResponseWriter, r *http.Request) {
+func getCustomerById(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "invalid http method found", http.StatusMethodNotAllowed)
+		return
+	}
+	//to fetch the path variable
+	param, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		http.Error(w, "Invalid customer ID", http.StatusInternalServerError)
+		return
+	}
+
+	var customer Customer
+	result := db.First(&customer, param)
+	if result.Error != nil {
+		http.Error(w, `{"error": "Customer details not found"}`, http.StatusNotFound)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(customer)
+}
 
-	var newCustomerDetail customers //slice to be defined if multiple customers to be added.
-	request_body, _ := ioutil.ReadAll(r.Body)
+func createCustomer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "invalid http method found", http.StatusMethodNotAllowed)
+		return
+	}
 
-	json.Unmarshal(request_body, &newCustomerDetail)
+	var newCustomerDetail Customer
+	request_body, _ := io.ReadAll(r.Body)
+	if err := json.Unmarshal(request_body, &newCustomerDetail); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
 
-	newCustomerDetail.Id = getId()
-	sampleDetails = append(sampleDetails, newCustomerDetail)
-	//sampleDetails = append(sampleDetails, newCustomerDetail...) // to add multiple customers
-	json.NewEncoder(w).Encode(sampleDetails)
+	if err := db.Create(&newCustomerDetail).Error; err != nil {
+		http.Error(w, "Cannot insert data into database", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(newCustomerDetail)
 }
 
 func updateCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPut {
+		http.Error(w, "invalid http method found", http.StatusMethodNotAllowed)
+		return
+	}
 
-	var latestDetail customers
-	request_body, _ := ioutil.ReadAll(r.Body)
-	json.Unmarshal(request_body, &latestDetail)
-
-	// json.NewDecoder(r.Body).Decode(&latestDetail) - alternate to decode the JSON request to Go data structure
+	var latestDetail Customer
+	json.NewDecoder(r.Body).Decode(&latestDetail) //alternate to decode the JSON request to Go data structure
 
 	params := mux.Vars(r)
 	idparams, _ := strconv.Atoi(params["id"])
 
-	for k, v := range sampleDetails {
+	for k, v := range customersList {
 		if int(v.Id) == idparams {
 			v = latestDetail
-			sampleDetails[k] = v
+			customersList[k] = v
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]string{
 				"message": "Customer updated successfully",
@@ -99,21 +148,23 @@ func updateCustomer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte(`{"error": "ID not found"}`))
 }
 
 func deleteCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodDelete {
+		http.Error(w, "invalid http method found", http.StatusMethodNotAllowed)
+		return
+	}
 
 	params := mux.Vars(r)
-
 	idparams, _ := strconv.Atoi(params["id"])
 
-	for k, v := range sampleDetails {
+	for k, v := range customersList {
 		if int(v.Id) == idparams {
-			sampleDetails = append(sampleDetails[:k], sampleDetails[k+1:]...)
+			customersList = append(customersList[:k], customersList[k+1:]...)
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]string{
 				"message": "Customer deleted successfully",
@@ -121,33 +172,25 @@ func deleteCustomer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte(`{"error": "ID not found"}`))
 }
 
 func main() {
 	fmt.Println("Welcome to the backend service of CRM tool!!!")
-	sampleDetails = []customers{
-		{1, "Tom", "Developer", "tom1@gmail.com", 9876543210, true},
-		{2, "David", "QA Engineer", "david2@gmail.com", 9876543210, false},
-		{3, "Stuart", "Project manager", "stuart3@gmail.com", 9876543210, true},
-	}
-
+	initializeDatabase()
 	fmt.Println("Please find the customer details below:")
-
-	for _, detail := range sampleDetails {
-		fmt.Println(detail)
-	}
+	fmt.Println(customersList)
 
 	router := mux.NewRouter()
 
 	router.HandleFunc("/", about).Methods("GET")
 	router.HandleFunc("/customers", getCustomers).Methods("GET")
-	router.HandleFunc("/customers/{id}", getCustomer).Methods("GET")
-	router.HandleFunc("/customers", addCustomer).Methods("POST")
-	router.HandleFunc("/customers/{id}", updateCustomer).Methods("PUT")
-	router.HandleFunc("/customers/{id}", deleteCustomer).Methods("DELETE")
+	router.HandleFunc("/customer/{id}", getCustomerById).Methods("GET")
+	router.HandleFunc("/customer", createCustomer).Methods("POST")
+	router.HandleFunc("/customer/{id}", updateCustomer).Methods("PUT")
+	router.HandleFunc("/customer/{id}", deleteCustomer).Methods("DELETE")
 
 	fmt.Println("Server started...")
 
