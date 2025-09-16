@@ -1,155 +1,75 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"log"
 	"net/http"
-	"strconv"
+	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-type customers struct {
-	Id        uint
-	Name      string
-	Role      string
-	Email     string
-	Phone     uint64
-	Contacted bool
+type Customer struct {
+	Id        string    `json:"id"`
+	Name      string    `json:"name"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-var sampleDetails []customers
+var customersList []Customer
 
-func getId() uint {
-	var highestId uint = 0
-
-	for _, customer := range sampleDetails {
-		if customer.Id > uint(highestId) {
-			highestId = customer.Id
-		}
+func seedDetails() {
+	customersList = []Customer{
+		{Id: uuid.NewString(), Name: "Tom", Role: "Developer", CreatedAt: time.Now()},
+		{Id: uuid.NewString(), Name: "David", Role: "QA Engineer", CreatedAt: time.Now()},
+		{Id: uuid.NewString(), Name: "Stuart", Role: "Project manager", CreatedAt: time.Now()},
 	}
-	return highestId + 1
-}
-
-func about(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	http.ServeFile(w, r, "./../static/about.html")
-}
-
-func getCustomers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(sampleDetails)
-}
-
-func getCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	//to fetch the path variable
-	params := mux.Vars(r)
-	idparam, _ := strconv.Atoi(params["id"])
-
-	for _, v := range sampleDetails {
-		if int(v.Id) == idparam {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(v)
-			return
-		}
-	}
-
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte(`{"error": "ID not found"}`))
-}
-
-func addCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var newCustomerDetail customers //slice to be defined if multiple customers to be added.
-	request_body, _ := ioutil.ReadAll(r.Body)
-
-	json.Unmarshal(request_body, &newCustomerDetail)
-
-	newCustomerDetail.Id = getId()
-	sampleDetails = append(sampleDetails, newCustomerDetail)
-	//sampleDetails = append(sampleDetails, newCustomerDetail...) // to add multiple customers
-	json.NewEncoder(w).Encode(sampleDetails)
-}
-
-func updateCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var latestDetail customers
-	request_body, _ := ioutil.ReadAll(r.Body)
-	json.Unmarshal(request_body, &latestDetail)
-
-	// json.NewDecoder(r.Body).Decode(&latestDetail) - alternate to decode the JSON request to Go data structure
-
-	params := mux.Vars(r)
-	idparams, _ := strconv.Atoi(params["id"])
-
-	for k, v := range sampleDetails {
-		if int(v.Id) == idparams {
-			v = latestDetail
-			sampleDetails[k] = v
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
-				"message": "Customer updated successfully",
-			})
-			return
-		}
-	}
-
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte(`{"error": "ID not found"}`))
-}
-
-func deleteCustomer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	params := mux.Vars(r)
-
-	idparams, _ := strconv.Atoi(params["id"])
-
-	for k, v := range sampleDetails {
-		if int(v.Id) == idparams {
-			sampleDetails = append(sampleDetails[:k], sampleDetails[k+1:]...)
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
-				"message": "Customer deleted successfully",
-			})
-			return
-		}
-	}
-
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte(`{"error": "ID not found"}`))
 }
 
 func main() {
-	fmt.Println("Welcome to the backend service of CRM tool!!!")
-	sampleDetails = []customers{
-		{1, "Tom", "Developer", "tom1@gmail.com", 9876543210, true},
-		{2, "David", "QA Engineer", "david2@gmail.com", 9876543210, false},
-		{3, "Stuart", "Project manager", "stuart3@gmail.com", 9876543210, true},
-	}
+	seedDetails()
+	//Defining the gin router with the default middleware
+	router := gin.Default()
 
-	fmt.Println("Please find the customer details below:")
+	// Registering the welcome route
+	router.GET("/welcome", func(ctx *gin.Context) {
+		ctx.String(http.StatusOK, "Welcome to CRM tool using Gin framework!")
+	})
 
-	for _, detail := range sampleDetails {
-		fmt.Println(detail)
-	}
+	// Registering the route to display the customers list
+	router.GET("/customers", func(ctx *gin.Context) {
+		ctx.JSON(http.StatusOK, gin.H{"customers": customersList})
+	})
 
-	router := mux.NewRouter()
+	// Registering the route to fetch a single customer by its ID
+	router.GET("/customer/:id", func(ctx *gin.Context) {
+		id := ctx.Param("id")
 
-	router.HandleFunc("/", about).Methods("GET")
-	router.HandleFunc("/customers", getCustomers).Methods("GET")
-	router.HandleFunc("/customers/{id}", getCustomer).Methods("GET")
-	router.HandleFunc("/customers", addCustomer).Methods("POST")
-	router.HandleFunc("/customers/{id}", updateCustomer).Methods("PUT")
-	router.HandleFunc("/customers/{id}", deleteCustomer).Methods("DELETE")
+		for _, customer := range customersList {
+			if customer.Id == id {
+				ctx.JSON(http.StatusOK, customer)
+				return
+			}
+		}
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "customer not found"})
+	})
 
-	fmt.Println("Server started...")
+	// Registering the route to create a new customer
+	router.POST("/customer", func(ctx *gin.Context) {
+		var customer Customer
 
-	http.ListenAndServe(":3000", router)
+		if err := ctx.ShouldBindJSON(&customer); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Bad request"})
+			return
+		}
+		customer.Id = uuid.NewString()
+		customer.CreatedAt = time.Now()
+		customersList = append(customersList, customer)
+		ctx.JSON(http.StatusCreated, customer)
+	})
+
+	log.Println("Server running at port 3000")
+
+	// Starting the server
+	router.Run(":3000")
 }
