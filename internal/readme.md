@@ -1,6 +1,6 @@
 # Customer Relationship Management
 
-This project focuses on building a simple backend service for Customer Relationship Management (CRM). The project focuses on using GORM and Postgres (SQL database to store the records in database).
+This project focuses on building a simple backend service for Customer Relationship Management (CRM). The project uses GORM, net/http, and Postgres (SQL database to store the records in database) standard libraries from Go.
 
 # Descrition
 
