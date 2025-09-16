@@ -1,6 +1,6 @@
 # Customer Relationship Management
 
-This project focuses on building a simple backend service for Customer Relationship Management (CRM).
+This project focuses on building a simple backend service for Customer Relationship Management (CRM). The project focuses on using GORM and Postgres (SQL database to store the records in database).
 
 # Descrition
 
@@ -19,5 +19,8 @@ As part of CRM, the below operations will be performed,
 
 ## Executing Program
 
-1. Install `gorilla/mux` third party library to define and handle the http requests.
+1. Install the below third party libraries to define and handle the http requests.
+    a. `gorilla/mux`
+    b. `gorm.io/gorm`
+    c. `gorm.io/driver/postgres`
 2. `go run main.go` - command used to run and execute the program.
